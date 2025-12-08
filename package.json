@@ -1,0 +1,30 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@google/genai": "^1.26.0",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "openai": "^6.6.0",
+    "wav": "^1.0.2"
+  },
+  "name": "doodle_quest",
+  "version": "1.0.0",
+  "description": "**Play. Doodle. Grow!**",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vrinda2403/Doodle_Quest.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Vrinda2403/Doodle_Quest/issues"
+  },
+  "homepage": "https://github.com/Vrinda2403/Doodle_Quest#readme"
+}

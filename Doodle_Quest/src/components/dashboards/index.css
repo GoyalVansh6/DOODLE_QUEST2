@@ -1,0 +1,9 @@
+
+.top{
+   background-color:  rgba(8, 3, 27, 0.88);
+}
+
+.bord{
+    border: 2px solid black;
+    border-radius: 10px;
+}
