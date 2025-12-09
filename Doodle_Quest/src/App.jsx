@@ -1,8 +1,7 @@
 import React from "react";
-// Change: Removed `BrowserRouter as Router` from the import
-import {  BrowserRouter as Router , Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
+import { useAuth } from "@clerk/clerk-react";
 
-// Import all your components here
 import Login from './components/Login';
 import Signup from './components/Signup';
 import WelcomePage from './components/WelcomePage';
@@ -19,29 +18,39 @@ import Storytime from "./components/story/storytime";
 import ProtectedRoute from "./components/ProtectedRoutes";
 
 function App() {
-  // Change: Removed the <Router> wrapper from here
-  return (
-   
+  const { isLoaded, userId } = useAuth();
+
+  if (!isLoaded) {
+    return <div>Loading...</div>;
+  }
+
+  if (!userId) {
+    return (
       <Routes>
-        <Route path="/quizflash" element={<QuizFlash />} />
-        <Route path="/quiz" element={<Quiz />} />
-        <Route path="/quizreward" element={<QuizReward />} />
-        <Route path="/" element={<ProtectedRoute><Child /></ProtectedRoute>} />
-        {/* <Route path="/" element={<Child />} /> */}
-        <Route path="/parent"  element= {<ProtectedRoute><Parent/></ProtectedRoute>}/>
-        {/* <Route path="/parent" element={<Parent />} /> */}
-        <Route path="/doddledeck" element ={<Doddledeck/>}/>
-        <Route path="/rewards" element = {<Rewards/>}/>
-        <Route path="/screendrawing" element = {<ScreenDrawing/>}/>
-        <Route path="/paperdrawing" element = {<PaperDrawing/>}/>
-        <Route path="/storytime" element = {<Storytime/>}/>
-        <Route path="/signup" element = {<Signup/>}/>
-        <Route path="/login" element = {<Login/>}/>
-        <Route path="/welcome" element = {<WelcomePage/>}/>
-       </Routes>
-     
-   
-    
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/welcome" element={<WelcomePage />} />
+        <Route path="*" element={<Login />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/quizflash" element={<QuizFlash />} />
+      <Route path="/quiz" element={<Quiz />} />
+      <Route path="/quizreward" element={<QuizReward />} />
+      <Route path="/" element={<ProtectedRoute><Child /></ProtectedRoute>} />
+      <Route path="/parent" element={<ProtectedRoute><Parent/></ProtectedRoute>} />
+      <Route path="/doddledeck" element={<Doddledeck/>}/>
+      <Route path="/rewards" element={<Rewards/>}/>
+      <Route path="/screendrawing" element={<ScreenDrawing/>}/>
+      <Route path="/paperdrawing" element={<PaperDrawing/>}/>
+      <Route path="/storytime" element={<Storytime/>}/>
+      <Route path="/signup" element={<Signup/>}/>
+      <Route path="/login" element={<Login/>}/>
+      <Route path="/welcome" element={<WelcomePage/>}/>
+    </Routes>
   );
 }
 
