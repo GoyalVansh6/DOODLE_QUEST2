@@ -90,7 +90,7 @@ import Story from "../models/storymodel.js";
 import Quiz from '../models/quizmodel.js';
 import audioService from "../services/audioservice.js";
 import cloudinaryaudio from "../services/cloudinaryaudio.js";
-import ImageClassifier from '../models/DoodleRecognition.js';
+//import ImageClassifier from '../models/DoodleRecognition.js';
 
 const uploadDoodle = asyncHandler(async (req, res) => {
   if (!req.file) {
