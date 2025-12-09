@@ -643,22 +643,18 @@
 
 // export default Parent;
 
-import React, { useState, useEffect, useRef } from 'react'; //  Added useRef
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useUser, useAuth } from '@clerk/clerk-react';
-import { useNavigate } from 'react-router-dom';//  Clerk import
+import { useNavigate } from 'react-router-dom';
 import { io } from "socket.io-client";
-
-
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const Parent = () => {
-  // Screen-time states
+  // --- Screen-time & User States ---
   const [screenTime, setScreenTime] = useState(0);
   const [dailyLimit, setDailyLimit] = useState(0);
   const [newLimit, setNewLimit] = useState("");
-
-
 
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -679,28 +675,33 @@ const Parent = () => {
   const [loading, setLoading] = useState(true);
   const [cameraAllowed, setCameraAllowed] = useState(false);
   const userId = "child123"; // temp — later dynamic
+
   // --- Task Management State ---
   const [taskMode, setTaskMode] = useState('assign'); // 'assign' or 'review'
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [assigning, setAssigning] = useState(false);
 
-  // Review State
+  // --- Review State ---
   const [taskList, setTaskList] = useState([]);
   const [appreciationMsg, setAppreciationMsg] = useState("");
-  const [activeTaskId, setActiveTaskId] = useState(null);// Which task are we appreciating?
+  const [activeTaskId, setActiveTaskId] = useState(null);
 
-  // --- AI SUGGESTION LOGIC START (NEW) ---
+  // --- AI & Icon State (NEW FEATURES) ---
   const [aiData, setAiData] = useState(null); // Stores age & suggestions
   const [showSuggestions, setShowSuggestions] = useState(false); // Toggles dropdown
   const wrapperRef = useRef(null); // Detects clicks outside
 
-  // 1. Fetch Suggestions on Load
+  // Noun Project State
+  const [iconOptions, setIconOptions] = useState([]);
+  const [selectedIcon, setSelectedIcon] = useState(null);
+  const [loadingIcons, setLoadingIcons] = useState(false);
+
+  // --- 1. Fetch AI Suggestions on Load (NEW) ---
   useEffect(() => {
     const fetchSuggestions = async () => {
       try {
-        // Assuming your backend for AI is on port 5000 as per previous setup
-        const res = await fetch('http://localhost:5000/api/parental/suggestions');
+        const res = await fetch('http://localhost:3000/api/parental/suggestions');
         const result = await res.json();
         if (result.success) {
           setAiData(result);
@@ -712,7 +713,7 @@ const Parent = () => {
     fetchSuggestions();
   }, []);
 
-  // 2. Click Outside Listener (Closes menu)
+  // --- 2. Click Outside Listener (Closes AI menu) ---
   useEffect(() => {
     function handleClickOutside(event) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
@@ -723,20 +724,42 @@ const Parent = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 3. Handle Selecting a Word
+  // --- 3. Icon Fetching Logic (NEW) ---
+  const fetchIcons = async (query) => {
+    if (!query) return;
+    setLoadingIcons(true);
+    setIconOptions([]);
+    try {
+      const res = await axios.get(`http://localhost:3000/api/noun/icons?q=${query}`);
+      if (res.data.icons) {
+        setIconOptions(res.data.icons);
+      }
+    } catch (err) {
+      console.error("Failed to fetch icons", err);
+    } finally {
+      setLoadingIcons(false);
+    }
+  };
+
+  // Handle selecting an AI suggestion
   const handleSelectSuggestion = (word) => {
     setTaskTitle(word);
     setShowSuggestions(false);
+    fetchIcons(word); // Auto-fetch icons
   };
-  // --- AI SUGGESTION LOGIC END ---
 
+  // Handle fetching icons when typing finishes
+  const handleTitleBlur = () => {
+    if (taskTitle) fetchIcons(taskTitle);
+  };
+
+  // --- Camera Permission Logic ---
   const updateCameraPermission = async (value) => {
     try {
       await axios.put("http://localhost:3000/api/camera/update", {
         userId,
         allowed: value
       });
-
       setCameraAllowed(value);
       alert("Camera permission updated!");
     } catch (err) {
@@ -745,15 +768,14 @@ const Parent = () => {
     }
   };
 
+  // --- Socket.IO for Safety Alerts ---
   useEffect(() => {
     const socket = io("http://localhost:3000");
-
     socket.on("unsafe-doodle", (data) => {
       if (data.userId === userId) {
-        alert("⚠️ ALERT: " + data.message);
+        alert(" ALERT: " + data.message);
       }
     });
-
     return () => socket.disconnect();
   }, []);
 
@@ -770,9 +792,7 @@ const Parent = () => {
         const statsRes = await axios.get('http://localhost:3000/api/dashboard/stats', config);
         setStats(statsRes.data);
 
-        // 2. Get Tasks (for review)
-        // Note: In dev mode, we act as both parent and child, so this works.
-        // In prod, you'd fetch tasks by childId.
+        // 2. Get Tasks
         const tasksRes = await axios.get('http://localhost:3000/api/tasks/my-tasks', config);
         setTaskList(tasksRes.data);
 
@@ -783,29 +803,43 @@ const Parent = () => {
       }
     };
     fetchData();
-  }, [getToken]); // Reload when token is ready
+  }, [getToken]);
 
-  // --- Handle Task Assignment ---
+  //Handle Task Assignment
+
   const handleAssignTask = async (e) => {
     e.preventDefault();
-    if (!taskTitle) return alert("Please enter a task title");
+
+    //  VALIDATION CHECKS
+    if (!taskTitle) return alert("Please enter a task title first!");
+
+    // NEW CHECK: Force Image Selection
+    if (!selectedIcon) {
+      return alert("Please select an image for the clue box before assigning!");
+    }
 
     setAssigning(true);
     try {
       const token = await getToken();
-      // Assign to self for testing
+
+      // Send data to backend
       await axios.post('http://localhost:3000/api/tasks/assign', {
         childId: user.id,
         title: taskTitle,
         description: taskDesc,
-        dueDate: new Date()
+        dueDate: new Date(),
+        taskImage: selectedIcon // <--- This must be present
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       alert("Task Assigned Successfully!");
+
+      // Cleanup
       setTaskTitle("");
       setTaskDesc("");
+      setSelectedIcon(null);
+      setIconOptions([]);
 
       // Refresh list
       const res = await axios.get('http://localhost:3000/api/tasks/my-tasks', {
@@ -814,7 +848,7 @@ const Parent = () => {
       setTaskList(res.data);
 
     } catch (err) {
-      console.error("Error assigning task:", err);
+      console.error("Assign Error:", err);
       alert("Failed to assign task.");
     } finally {
       setAssigning(false);
@@ -837,7 +871,6 @@ const Parent = () => {
       setAppreciationMsg("");
       setActiveTaskId(null);
 
-      // Update local list to show the new message
       setTaskList(prev => prev.map(t =>
         t._id === taskId ? { ...t, appreciationMessage: appreciationMsg } : t
       ));
@@ -848,6 +881,7 @@ const Parent = () => {
     }
   };
 
+  // --- Screen Time Logic ---
   useEffect(() => {
     const fetchScreenTime = async () => {
       try {
@@ -858,18 +892,16 @@ const Parent = () => {
         console.log("Error fetching screen time:", err);
       }
     };
-
     fetchScreenTime();
   }, []);
+
   const updateLimit = async () => {
     if (!newLimit) return alert("Enter limit in minutes");
-
     try {
       await axios.put("http://localhost:3000/api/time/limit", {
         userId,
         limitMinutes: Number(newLimit),
       });
-
       alert("Screen-time limit updated!");
       setDailyLimit(Number(newLimit));
       setNewLimit("");
@@ -878,7 +910,6 @@ const Parent = () => {
       alert("Failed to update limit");
     }
   };
-
 
   // --- Chart Data ---
   const barData = [
@@ -894,7 +925,6 @@ const Parent = () => {
   ];
 
   const hasData = stats.totalDoodles > 0 || stats.puzzlesSolved > 0 || stats.totalQuizzes > 0;
-  const displayPieData = hasData ? pieData : [{ name: 'No Data', value: 1 }];
   const COLORS = hasData ? ['#8884d8', '#82ca9d', '#ffc658'] : ['#e0e0e0'];
 
   const menuItems = [
@@ -923,54 +953,40 @@ const Parent = () => {
       <div className="text-[#4A0303] font-robotoSlab text-5xl mt-8 text-center my-10">
         Progress Hub
       </div>
+
       {/* --- Top Images Section --- */}
       <div className="w-full max-w-7xl mx-auto mt-4 mb-14 flex justify-center gap-8 px-4">
-
-        {/* Image 1 */}
         <div className="w-64 h-80 rounded-2xl overflow-hidden border-4 border-black shadow-xl bg-white">
           <img src="/src/assets/image3.png" alt="Child" className="w-full h-full object-cover" />
         </div>
-
-        {/* Timer Image (Middle) */}
         <div className="w-64 h-80 rounded-2xl overflow-hidden border-4 border-black shadow-xl bg-pink-100 flex flex-col items-center justify-center">
           <h3 className="font-thin text-4xl mb-4 font-robotoSlab">Timer</h3>
           <img src="/src/assets/clock.png" alt="Timer" className="w-32 opacity-80"
             onError={(e) => e.target.src = 'https://cdn-icons-png.flaticon.com/512/2928/2928750.png'} />
         </div>
-
-        {/* Image 3 */}
         <div className="w-64 h-80 rounded-2xl overflow-hidden border-4 border-black shadow-xl bg-white">
           <img src="/src/assets/image2.png" alt="Child" className="w-full h-full object-cover" />
         </div>
       </div>
 
-
-
       {/* --- MAIN DASHBOARD GRID --- */}
       <div className="max-w-[1400px] mx-auto w-full px-6 flex gap-6 items-start">
 
-        {/* === LEFT SIDEBAR (FIXED ALIGNMENT) === */}
-        <div className="w-64 bg-[#0F172A] text-white  rounded-lg overflow-hidden shadow-lg flex-shrink-0 flex flex-col py-20">
+        {/* === LEFT SIDEBAR === */}
+        <div className="w-64 bg-[#0F172A] text-white rounded-lg overflow-hidden shadow-lg flex-shrink-0 flex flex-col py-20">
           {menuItems.map((item, index) => (
             <div key={index} className="flex items-center h-20 w-full group cursor-pointer">
-
-              {/* Left Column: Dot/Icon */}
               <div className="w-[60px] flex justify-center items-center h-full relative">
-                {/* Optional: Vertical Line segment to connect dots */}
                 {index !== menuItems.length - 1 && (
                   <div className="absolute bottom-0 top-1/2 w-px bg-gray-700 -z-10 h-full"></div>
                 )}
                 {index !== 0 && (
                   <div className="absolute top-0 bottom-1/2 w-px bg-gray-700 -z-10 h-full"></div>
                 )}
-
-                {/* The Dot */}
                 <div className={`rounded-full p-1 ${item.active ? 'bg-white' : 'bg-transparent'}`}>
                   <div className={`w-2 h-2 rounded-full ${item.active ? 'bg-black' : 'bg-gray-500'}`}></div>
                 </div>
               </div>
-
-              {/* Right Column: Label/Button */}
               <div className="flex-1 pr-6 flex items-center">
                 <div className={`w-full py-2 text-lg font-bold tracking-wide transition-all duration-200
                             ${item.active
@@ -987,11 +1003,8 @@ const Parent = () => {
 
         {/* === RIGHT CONTENT AREA === */}
         <div className="flex-grow bg-[#E2E2EA] p-6 rounded-2xl shadow-inner">
-
-          {/* ROW 1: Highlights + Bar Chart */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-
-            {/* 1. Weekly Highlights Card */}
+            {/* Highlights */}
             <div className="bg-[#4285F4] rounded-2xl text-white overflow-hidden shadow-lg flex flex-col">
               <div className="p-6 flex items-center gap-4">
                 <div className="w-14 h-14 bg-yellow-300 rounded-full border-2 border-white flex items-center justify-center overflow-hidden">
@@ -1008,7 +1021,6 @@ const Parent = () => {
                 <div className="flex items-center gap-2 text-sm"><span className="text-yellow-500">⭐</span> Completed <b>{stats.weeklyDoodles}</b> Doodling Sessions</div>
                 <div className="flex items-center gap-2 text-sm"><span className="text-yellow-500">☀️</span> Took <b>{stats.weeklyQuizzes}</b> Quizzes</div>
                 <div className="flex items-center gap-2 text-sm"><span className="text-yellow-500">⭐</span> Solved <b>{stats.weeklyPuzzles}</b> Puzzles this week</div>
-
                 <div className="mt-4">
                   <div className="flex justify-between text-xs font-bold mb-1">
                     <span>Weekly Learning Goal</span>
@@ -1022,7 +1034,7 @@ const Parent = () => {
               </div>
             </div>
 
-            {/* 2. Bar Chart (Weekly Division) */}
+            {/* Bar Chart */}
             <div className="bg-gray-200 rounded-2xl p-4 shadow-lg border border-gray-300 flex flex-col">
               <h3 className="text-sm font-bold mb-4 ml-2">Weekly Activity</h3>
               <div className="flex-grow h-64">
@@ -1042,112 +1054,57 @@ const Parent = () => {
             </div>
           </div>
 
-          {/* ROW 2: Stats Grid + Pie Chart */}
           <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
-
-            {/* 3. Four Small Stats Cards */}
             <div className="grid grid-cols-2 gap-4">
-              {/* Card A */}
               <div className="bg-[#EBDAC5] p-4 rounded-xl border border-black/20 shadow-sm relative">
                 <div className="text-xs font-bold text-gray-600">Total Drawings</div>
                 <div className="text-3xl font-bold mt-1">{stats.totalDoodles}</div>
                 <div className="text-[10px] text-green-700 font-bold mt-1">+12% from last week</div>
                 <div className="absolute top-2 right-2"><img src="/src/assets/pin.png" w="20" /></div>
               </div>
-              {/* Card B */}
               <div className="bg-[#C8E1A5] p-4 rounded-xl border border-black/20 shadow-sm relative">
                 <div className="text-xs font-bold text-gray-600">Quizzes Taken</div>
                 <div className="text-3xl font-bold mt-1">{stats.totalQuizzes}</div>
                 <div className="text-[10px] text-green-700 font-bold mt-1">+12% from last week</div>
                 <div className="absolute top-2 right-2"><img src="/src/assets/copy.png" w="20" /></div>
               </div>
-              {/* Card C */}
               <div className="bg-[#A9C2E9] p-4 rounded-xl border border-black/20 shadow-sm relative">
                 <div className="text-xs font-bold text-gray-600">Puzzles Solved</div>
                 <div className="text-3xl font-bold mt-1">{stats.puzzlesSolved}</div>
                 <div className="text-[10px] text-green-700 font-bold mt-1">+12% from last week</div>
                 <div className="absolute top-2 right-2"><img src="/src/assets/puzzle.png" w="20" /></div>
-                {/* --- CAMERA PERMISSION CARD --- */}
+
+                {/* Camera Permission */}
                 <div className="bg-[#FFE4C4] p-4 rounded-xl border border-black/20 shadow-sm relative mt-4">
-
                   <h2 className="text-lg font-bold mb-2">Camera Permissions</h2>
-
-                  <p className="text-[15px] mb-2">
-                    Allow your child to use the camera for Paper Drawing recognition.
-                  </p>
-
+                  <p className="text-[15px] mb-2">Allow your child to use the camera for Paper Drawing recognition.</p>
                   <div className="flex gap-3 mt-3">
-                    <button
-                      onClick={() => updateCameraPermission(true)}
-                      className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-                    >
-                      Allow Camera
-                    </button>
-
-                    <button
-                      onClick={() => updateCameraPermission(false)}
-                      className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                    >
-                      Disable Camera
-                    </button>
+                    <button onClick={() => updateCameraPermission(true)} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Allow Camera</button>
+                    <button onClick={() => updateCameraPermission(false)} className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Disable Camera</button>
                   </div>
-
-                  <p className="mt-3 text-sm">
-                    Current status:
-                    <b className="ml-2">{cameraAllowed ? "Allowed" : "Not Allowed"}</b>
-                  </p>
+                  <p className="mt-3 text-sm">Current status: <b className="ml-2">{cameraAllowed ? "Allowed" : "Not Allowed"}</b></p>
                 </div>
-
               </div>
-              {/* Card D */}
+
               <div className="bg-[#85DCE4] p-4 rounded-xl border border-black/20 shadow-sm relative">
-
                 <h2 className="text-lg font-bold mb-1">Screen Time Control</h2>
-
-                <p className="text-xl">
-                  <b>Used Today:</b> {screenTime} min
-                </p>
-
-                <p className="text-xl mt-1">
-                  <b>Daily Limit:</b> {dailyLimit} min
-                </p>
-
+                <p className="text-xl"><b>Used Today:</b> {screenTime} min</p>
+                <p className="text-xl mt-1"><b>Daily Limit:</b> {dailyLimit} min</p>
                 <div className="mt-4">
                   <label className="block text-sm font-semibold mb-1">Set New Limit (minutes)</label>
-
-                  <input
-                    type="number"
-                    value={newLimit}
-                    onChange={(e) => setNewLimit(e.target.value)}
-                    className="border p-2 rounded w-full"
-                    placeholder="e.g., 90"
-                  />
-
-                  <button
-                    onClick={updateLimit}
-                    className="bg-blue-600 text-white px-4 py-2 rounded mt-3 hover:bg-blue-700 w-full"
-                  >
-                    Update Limit
-                  </button>
+                  <input type="number" value={newLimit} onChange={(e) => setNewLimit(e.target.value)} className="border p-2 rounded w-full" placeholder="e.g., 90" />
+                  <button onClick={updateLimit} className="bg-blue-600 text-white px-4 py-2 rounded mt-3 hover:bg-blue-700 w-full">Update Limit</button>
                 </div>
               </div>
-
-
             </div>
 
-            {/* 4. Pie Chart (Total Doodles) */}
+            {/* Pie Chart */}
             <div className="bg-gray-200 rounded-2xl p-4 shadow-lg border border-gray-300 flex flex-col items-center justify-center">
               <h3 className="text-sm font-bold self-start mb-2">Total Activity</h3>
               <div className="w-full h-48 relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      innerRadius={40}
-                      outerRadius={60}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
+                    <Pie data={pieData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
                       {pieData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
@@ -1155,7 +1112,6 @@ const Parent = () => {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-                {/* Center Text */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <span className="text-xl font-bold">{stats.totalDoodles + stats.totalQuizzes + stats.puzzlesSolved}</span>
                 </div>
@@ -1166,9 +1122,7 @@ const Parent = () => {
                 <span className="text-[#dda533]">● Quizzes</span>
               </div>
             </div>
-
           </div>
-
         </div>
       </div>
 
@@ -1178,9 +1132,7 @@ const Parent = () => {
         <p className="text-lg"><span className="text-green-600 font-bold">🌟 Good News:</span> Your child is doing amazing! Their creativity is growing.</p>
       </div>
 
-
-
-      {/* ✅ === TASK MANAGEMENT SECTION (UPDATED WITH TOGGLE) === */}
+      {/* === TASK MANAGEMENT SECTION === */}
       <div className="w-full max-w-6xl mx-auto mt-10 px-6">
         <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
 
@@ -1190,27 +1142,13 @@ const Parent = () => {
               <img src="/src/assets/post.png" alt="Task" className="w-6 invert" />
               <h2 className="text-xl font-bold text-white font-orbitron">Task Management</h2>
             </div>
-
-            {/* SLIDER / TOGGLE BUTTONS */}
             <div className="bg-[#0F172A] p-1 rounded-full flex gap-1">
-              <button
-                onClick={() => setTaskMode('assign')}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${taskMode === 'assign' ? 'bg-white text-[#2C2A4A]' : 'text-white hover:bg-white/10'}`}
-              >
-                Assign New
-              </button>
-              <button
-                onClick={() => setTaskMode('review')}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${taskMode === 'review' ? 'bg-white text-[#2C2A4A]' : 'text-white hover:bg-white/10'}`}
-              >
-                Review & Appreciate
-              </button>
+              <button onClick={() => setTaskMode('assign')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${taskMode === 'assign' ? 'bg-white text-[#2C2A4A]' : 'text-white hover:bg-white/10'}`}>Assign New</button>
+              <button onClick={() => setTaskMode('review')} className={`px-4 py-1.5 rounded-full text-sm font-bold transition-all ${taskMode === 'review' ? 'bg-white text-[#2C2A4A]' : 'text-white hover:bg-white/10'}`}>Review & Appreciate</button>
             </div>
           </div>
 
-          {/* Content Area */}
           <div className="p-8">
-
             {/* === VIEW 1: ASSIGN TASKS === */}
             {taskMode === 'assign' && (
               <div className="flex flex-col md:flex-row gap-8 animate-fade-in">
@@ -1218,78 +1156,100 @@ const Parent = () => {
                   <h3 className="text-lg font-bold text-gray-800 mb-4">Create New Task</h3>
                   <form onSubmit={handleAssignTask} className="space-y-4">
 
-                    {/* === TASK TITLE INPUT WITH AI (UPDATED) === */}
+                    {/* TITLE INPUT WITH AI DROPDOWN */}
                     <div className="relative" ref={wrapperRef}>
                       <label className="block text-sm font-bold text-gray-600 mb-1">
                         Task Title
-                        {aiData && (
-                          <span className="ml-2 text-xs font-normal text-[#3B17AB] bg-indigo-50 px-2 py-0.5 rounded-full animate-pulse">
-                            ✨ AI Suggestions Ready (Age: {aiData.childAge})
-                          </span>
-                        )}
+                        {aiData && <span className="ml-2 text-xs font-normal text-[#3B17AB] bg-indigo-50 px-2 py-0.5 rounded-full animate-pulse">✨ AI Suggestions Ready</span>}
                       </label>
+                      <input
+                        type="text"
+                        className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-[#3B17AB] outline-none transition"
+                        placeholder="Type or pick a suggestion..."
+                        value={taskTitle}
+                        onChange={(e) => setTaskTitle(e.target.value)}
+                        onFocus={() => setShowSuggestions(true)}
+                        onBlur={handleTitleBlur} // Trigger icon fetch when typing stops
+                      />
 
-                      <div className="relative">
-                        <input
-                          type="text"
-                          className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-[#3B17AB] outline-none transition"
-                          placeholder="Type or pick an AI suggestion..."
-                          value={taskTitle}
-                          onChange={(e) => setTaskTitle(e.target.value)}
-                          onFocus={() => setShowSuggestions(true)}
-                          autoComplete="off"
-                        />
-
-                        {/* === THE AI DROPDOWN MENU === */}
-                        {showSuggestions && aiData?.suggestions && (
-                          <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2">
-                            {/* Header */}
-                            <div className="bg-gradient-to-r from-[#2C2A4A] to-[#3B17AB] px-4 py-2 text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                              <span>🤖 Recommended for Age {aiData.childAge}</span>
-                            </div>
-
-                            {/* List of Suggestions */}
-                            {aiData.suggestions.map((word, index) => (
-                              <div
-                                key={index}
-                                onClick={() => handleSelectSuggestion(word)}
-                                className="px-4 py-3 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 text-gray-700 font-medium transition-colors flex justify-between group"
-                              >
-                                <span>{word}</span>
-                                <span className="text-[#3B17AB] text-sm opacity-0 group-hover:opacity-100 transition-opacity font-bold">
-                                  Select
-                                </span>
-                              </div>
-                            ))}
+                      {/* AI DROPDOWN MENU */}
+                      {showSuggestions && aiData?.suggestions && (
+                        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2">
+                          <div className="bg-gradient-to-r from-[#2C2A4A] to-[#3B17AB] px-4 py-2 text-xs font-bold text-white uppercase tracking-wider">
+                            Recommended for Age {aiData.childAge}
                           </div>
-                        )}
-                      </div>
+                          {aiData.suggestions.map((word, index) => (
+                            <div key={index} onClick={() => handleSelectSuggestion(word)} className="px-4 py-3 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 text-gray-700 font-medium transition-colors flex justify-between group">
+                              <span>{word}</span>
+                              <span className="text-[#3B17AB] text-sm opacity-0 group-hover:opacity-100 transition-opacity font-bold">Select</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
+                    {/* ICON SELECTION GRID */}
                     <div>
-                      <label className="block text-sm font-bold text-gray-600 mb-1">Instructions</label>
-                      <textarea
-                        className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-[#3B17AB] outline-none transition h-24 resize-none"
-                        placeholder="e.g. Use yellow for sand and blue for water..."
-                        value={taskDesc}
-                        onChange={(e) => setTaskDesc(e.target.value)}
-                      ></textarea>
+                      <label className="block text-sm font-bold text-gray-600 mb-2">Select an Icon</label>
+                      {loadingIcons ? (
+                        <div className="text-sm text-gray-500 animate-pulse">Searching for icons...</div>
+                      ) : iconOptions.length > 0 ? (
+                        <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                          {iconOptions.map((iconObj) => {
+                            const url = iconObj.thumbnail_url;
+                            return (
+                              <div
+                                key={iconObj.id}
+                                onClick={() => setSelectedIcon(url)}
+                                className={`cursor-pointer border-2 rounded-lg p-2 transition-all w-40 flex-shrink-0 flex items-center justify-center bg-gray-50
+                                   ${selectedIcon === url ? 'border-[#3B17AB] bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 hover:border-gray-400'}
+                                 `}
+                              >
+                                <img src={url} alt="icon" className="w-12 h-12 opacity-80 object-contain" />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-400 italic bg-gray-50 p-3 rounded border border-dashed text-center">
+                          Type a title above to see matching icons here.
+                        </div>
+                      )}
                     </div>
+
                     <button
                       type="submit"
-                      disabled={assigning}
-                      className="bg-[#3B17AB] text-white px-8 py-3 rounded-full font-bold hover:bg-[#2a0f80] transition shadow-lg w-full md:w-auto disabled:opacity-50"
+                      disabled={assigning || !selectedIcon} //  Visually disable if no icon
+                      className={`
+                              w-full px-8 py-3 rounded-full font-bold shadow-lg transition flex items-center justify-center gap-2
+                              ${!selectedIcon
+                          ? "bg-gray-400 cursor-not-allowed text-gray-200" 
+                          : "bg-[#3B17AB] hover:bg-[#2a0f80] text-white"   
+                        }
+  `}
                     >
-                      {assigning ? "Assigning..." : "Assign Task to Child"}
+                      {!selectedIcon ? "Select an Icon to Assign" : (assigning ? "Assigning..." : "Assign Task to Child")}
                     </button>
                   </form>
                 </div>
+
+                {/* TASK PREVIEW COLUMN */}
                 <div className="flex-1 bg-blue-50 rounded-xl p-6 flex flex-col justify-center items-center text-center border border-blue-100">
-                  <img src="https://cdn-icons-png.flaticon.com/512/4205/4205906.png" alt="Tasks" className="w-32 mb-4 opacity-80" />
-                  <h4 className="font-bold text-blue-900">Encourage Creativity!</h4>
-                  <p className="text-sm text-blue-700 mt-2 max-w-xs">
-                    Assigning specific themes helps focus your child's imagination. Try topics like "Animals", "Space", or "Family".
-                  </p>
+                  {selectedIcon ? (
+                    <div className="bg-white p-6 rounded-2xl shadow-lg w-full max-w-xs transform transition hover:scale-105">
+                      <img src={selectedIcon} alt="Selected Task" className="w-32 h-32 mx-auto mb-4 object-contain" />
+                      <h4 className="font-bold text-xl text-blue-900">{taskTitle || "Task Title"}</h4>
+
+                    </div>
+                  ) : (
+                    <>
+                      <img src="https://cdn-icons-png.flaticon.com/512/4205/4205906.png" alt="Tasks" className="w-32 mb-4 opacity-80" />
+                      <h4 className="font-bold text-blue-900">Encourage Creativity!</h4>
+                      <p className="text-sm text-blue-700 mt-2 max-w-xs">
+                        Assigning specific themes helps focus your child's imagination. Try topics like "Animals", "Space", or "Family".
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -1304,17 +1264,25 @@ const Parent = () => {
                   ) : (
                     taskList.map(task => (
                       <div key={task._id} className="border border-gray-200 rounded-xl p-4 flex flex-col md:flex-row justify-between items-center gap-4 hover:shadow-md transition bg-gray-50">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <h4 className="font-bold text-gray-800">{task.title}</h4>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${task.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                              {task.status === 'completed' ? 'COMPLETED' : 'PENDING'}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-                          {task.appreciationMessage && (
-                            <p className="text-xs text-purple-600 mt-2 font-medium">✨ Your Message: "{task.appreciationMessage}"</p>
+                        <div className="flex-1 flex gap-4 items-center">
+                          {/* Show Icon if available */}
+                          {task.taskImage && (
+                            <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <img src={task.taskImage} alt="Task" className="w-10 h-10 object-contain opacity-80" />
+                            </div>
                           )}
+                          <div>
+                            <div className="flex items-center gap-3">
+                              <h4 className="font-bold text-gray-800">{task.title}</h4>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${task.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                {task.status === 'completed' ? 'COMPLETED' : 'PENDING'}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                            {task.appreciationMessage && (
+                              <p className="text-xs text-purple-600 mt-2 font-medium">✨ Your Message: "{task.appreciationMessage}"</p>
+                            )}
+                          </div>
                         </div>
 
                         {/* Action Area */}
@@ -1322,27 +1290,11 @@ const Parent = () => {
                           {task.status === 'completed' && !task.appreciationMessage ? (
                             activeTaskId === task._id ? (
                               <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  placeholder="Write something nice..."
-                                  className="border rounded px-2 py-1 text-sm outline-none focus:border-purple-500"
-                                  value={appreciationMsg}
-                                  onChange={(e) => setAppreciationMsg(e.target.value)}
-                                />
-                                <button
-                                  onClick={() => handleSendAppreciation(task._id)}
-                                  className="bg-purple-600 text-white px-3 py-1 rounded text-sm font-bold hover:bg-purple-700"
-                                >
-                                  Send
-                                </button>
+                                <input type="text" placeholder="Write something nice..." className="border rounded px-2 py-1 text-sm outline-none focus:border-purple-500" value={appreciationMsg} onChange={(e) => setAppreciationMsg(e.target.value)} />
+                                <button onClick={() => handleSendAppreciation(task._id)} className="bg-purple-600 text-white px-3 py-1 rounded text-sm font-bold hover:bg-purple-700">Send</button>
                               </div>
                             ) : (
-                              <button
-                                onClick={() => setActiveTaskId(task._id)}
-                                className="bg-white border-2 border-purple-600 text-purple-600 px-4 py-1.5 rounded-full text-sm font-bold hover:bg-purple-50 transition"
-                              >
-                                Send Appreciation 💖
-                              </button>
+                              <button onClick={() => setActiveTaskId(task._id)} className="bg-white border-2 border-purple-600 text-purple-600 px-4 py-1.5 rounded-full text-sm font-bold hover:bg-purple-50 transition">Send Appreciation 💖</button>
                             )
                           ) : (
                             <div className="text-xs text-gray-400 font-medium italic w-32 text-center">
@@ -1356,7 +1308,6 @@ const Parent = () => {
                 </div>
               </div>
             )}
-
           </div>
         </div>
       </div>

@@ -326,7 +326,7 @@ import Badge5 from '../../assets/Badges/Badge5.png';
 // import mainaudio from '../../../public/audio/welcome.wav';
 import mainaudio from '../../assets/audio/welcome.wav';
 import introaudio from '../../assets/audio/intro1.wav';
-// ✅ Badge Mapping
+// 2 Badge Mapping
 const badgeImageMap = {
   "Badge1.png": Badge1,
   "Badge2.png": Badge2,

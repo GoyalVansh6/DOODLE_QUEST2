@@ -4,7 +4,7 @@ import Task from '../models/Task.model.js';
 // @desc    Create a new task (Parent assigns to Child)
 // @route   POST /api/tasks/assign
 const assignTask = asyncHandler(async (req, res) => {
-  const { childId, title, description, dueDate } = req.body;
+  const { childId, title, description, dueDate, taskImage } = req.body;
   const parentId = req.auth.userId; 
 
   const task = await Task.create({
@@ -13,6 +13,7 @@ const assignTask = asyncHandler(async (req, res) => {
     title,
     description,
     dueDate,
+    taskImage,
   });
 
   res.status(201).json(task);
@@ -24,7 +25,7 @@ const getMyTasks = asyncHandler(async (req, res) => {
   const childId = req.auth.userId;
 
   const tasks = await Task.find({ childId }).sort({ createdAt: -1 });
-  res.status(200).json(tasks);
+  res.status(201).json(tasks);
 });
 
 // @desc    Mark task as complete (Child)

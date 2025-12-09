@@ -246,17 +246,47 @@ function ScreenDrawing() {
   
   // --- Auth & Task State ---
   const { getToken, userId } = useAuth();
+  const [activeTask, setActiveTask] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
 
   const [doodle,setDoodle]=useState("moon");
   const [language, setLanguage] = useState("english");
 
-  // ✅ Replace with actual logged-in userId or dummy one for now
+  //  Replace with actual logged-in userId or dummy one for now
 
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+        
+        const response = await axios.get('http://localhost:3000/api/tasks/my-tasks', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const allTasks = response.data;
+        setTasks(allTasks);
+
+        //  MAPPING LOGIC: Find the first task that is NOT completed
+        // This effectively "queues" tasks. The child sees them one by one.
+        const currentTask = allTasks.find(t => t.status !== 'completed');
+        
+        console.log(" Current Active Task:", currentTask); // Debug log
+        setActiveTask(currentTask || null);
+
+      } catch (err) {
+        console.error("Error fetching tasks:", err);
+      } finally {
+        setLoadingTasks(false);
+      }
+    };
+    fetchTasks();
+  }, [getToken]);
 
   // Send canvas image to backend every 4 seconds
 const audioRef=useRef(null);
+
 useEffect(() => {
   const interval = setInterval(async () => {
     const canvas = canvasRef.current;
@@ -282,7 +312,7 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, []);
 
-  // ✅ Automatically start and stop timer when entering/leaving screen mode
+  //  Automatically start and stop timer when entering/leaving screen mode
   // AUTO REDIRECT WHEN LIMIT REACHED
 useEffect(() => {
   if (!userId) return;
@@ -372,7 +402,7 @@ useEffect(() => {
           task._id === taskId ? { ...task, status: 'completed' } : task
         )
       );
-      alert("Task marked as done! Now draw it on the canvas! 🎨");
+      alert("Great Job 🎨");
     } catch (err) {
       console.error("Error completing task:", err);
     }
@@ -460,69 +490,125 @@ useEffect(() => {
   //   }, "image/png");
   // };
 
+  // const handleSubmitDoodle = async () => {
+  //   console.log(" Submit button clicked");
+  //   audioRef.current.play();
+  //   const canvas = canvasRef.current;
+  //   if (!canvas) {
+  //     console.error(" Canvas ref is missing");
+  //     return;
+  //   }
+
+  //   // 1. Get Token
+  //   const token = await getToken();
+  //   if (!token) {
+  //     alert(" Error: You are not logged in (No Token)");
+  //     return;
+  //   }
+
+  //   // 2. Create Blob
+  //   canvas.toBlob(async (blob) => {
+  //     if (!blob) {
+  //       alert(" Error: Canvas is empty");
+  //       return;
+  //     }
+  //     console.log("Image Blob created size:", blob.size);
+
+  //     // 3. Create FormData
+  //     const formData = new FormData();
+  //     formData.append("doodleImage", blob, "doodle.png");
+  //     formData.append("prompt", "Screen Drawing");
+
+  //     try {
+  //       console.log(" Sending request to http://localhost:3000/api/storage/upload-doodle...");
+        
+  //       // 4. Send Request
+  //       const response = await axios.post(
+  //         `http://localhost:3000/api/storage/upload-doodle?doodle=${encodeURIComponent(doodle)}&language=${encodeURIComponent(language)}`, 
+  //         formData, 
+  //         {
+  //           headers: {
+  //             Authorization: `Bearer ${token}`,
+  //             "Content-Type": "multipart/form-data",
+  //           },
+  //         }
+  //       );
+
+  //       console.log(" Upload Success:", response.data);
+  //       alert("Your doodle was saved!");
+  //       handleClearCanvas();
+
+  //     } catch (error) {
+  //       console.error(" Upload Failed Details:", error);
+        
+  //       if (error.response) {
+  //         // Server responded with a status code (e.g., 400, 401, 500)
+  //         console.error("Server Status:", error.response.status);
+  //         console.error("Server Data:", error.response.data);
+  //         alert(`Upload Failed: Server Error ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+  //       } else if (error.request) {
+  //         // Request was made but no response received (Network Error)
+  //         console.error("No response from server. Is Backend running?");
+  //         alert("Upload Failed: Backend not responding. Is 'node app.js' running on port 3000?");
+  //       } else {
+  //         alert(`Upload Failed: ${error.message}`);
+  //       }
+  //     }
+  //   }, "image/png");
+  // };
+
   const handleSubmitDoodle = async () => {
-    console.log("🔵 Submit button clicked");
-    audioRef.current.play();
+    console.log(" Submit button clicked");
+    if(audioRef.current) audioRef.current.play();
+    
     const canvas = canvasRef.current;
-    if (!canvas) {
-      console.error("❌ Canvas ref is missing");
-      return;
-    }
-
-    // 1. Get Token
     const token = await getToken();
-    if (!token) {
-      alert("❌ Error: You are not logged in (No Token)");
-      return;
-    }
+    if (!token) return alert("You are not logged in");
 
-    // 2. Create Blob
     canvas.toBlob(async (blob) => {
-      if (!blob) {
-        alert("❌ Error: Canvas is empty");
-        return;
-      }
-      console.log("🟢 Image Blob created size:", blob.size);
+      if (!blob) return alert("Canvas is empty");
 
-      // 3. Create FormData
       const formData = new FormData();
       formData.append("doodleImage", blob, "doodle.png");
-      formData.append("prompt", "Screen Drawing");
+      // Use the active task title as the prompt, or fallback
+      formData.append("prompt", activeTask ? activeTask.title : "Screen Drawing");
 
       try {
-        console.log("🟡 Sending request to http://localhost:3000/api/storage/upload-doodle...");
-        
-        // 4. Send Request
-        const response = await axios.post(
+        // 1. Upload the Doodle
+        await axios.post(
           `http://localhost:3000/api/storage/upload-doodle?doodle=${encodeURIComponent(doodle)}&language=${encodeURIComponent(language)}`, 
           formData, 
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "multipart/form-data",
-            },
-          }
+          { headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" } }
         );
 
-        console.log(" Upload Success:", response.data);
-        alert("Your doodle was saved!");
+        // 2. If this was for a Task, Mark it Complete & Advance
+        if (activeTask) {
+            // A. Tell Backend
+            await axios.put(`http://localhost:3000/api/tasks/complete/${activeTask._id}`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            // B. Update Frontend State Instantly (No Refresh!)
+            const updatedTasks = tasks.map(task => 
+                task._id === activeTask._id ? { ...task, status: 'completed' } : task
+            );
+            setTasks(updatedTasks);
+
+            // C. Find the NEXT pending task
+            const nextTask = updatedTasks.find(t => t.status !== 'completed');
+            setActiveTask(nextTask || null);
+
+            alert(`Great job! You finished "${activeTask.title}". Loading next...`);
+        } else {
+            alert("Your free-style doodle was saved!");
+        }
+
+        // 3. Clear Canvas for the next drawing
         handleClearCanvas();
 
       } catch (error) {
-        console.error(" Upload Failed Details:", error);
-        
-        if (error.response) {
-          // Server responded with a status code (e.g., 400, 401, 500)
-          console.error("Server Status:", error.response.status);
-          console.error("Server Data:", error.response.data);
-          alert(`Upload Failed: Server Error ${error.response.status} - ${JSON.stringify(error.response.data)}`);
-        } else if (error.request) {
-          // Request was made but no response received (Network Error)
-          console.error("No response from server. Is Backend running?");
-          alert("Upload Failed: Backend not responding. Is 'node app.js' running on port 3000?");
-        } else {
-          alert(`Upload Failed: ${error.message}`);
-        }
+        console.error("Upload Failed:", error);
+        alert("Upload Failed.");
       }
     }, "image/png");
   };
@@ -551,13 +637,70 @@ useEffect(() => {
       >
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-end">
           
-          {/* Left Column: Clue Box (Static for other uses) */}
+          {/* Left Column: Clue Box (Static for other uses)
           <div className="lg:col-span-1">
             <h2 className="text-xl font-['Orbitron'] font-bold text-white mb-2">
               Clue Box
             </h2>
             <div className="bg-white h-72 w-full border-4 border-white rounded-2xl shadow-xl flex items-center justify-center">
                <p className="text-gray-400 italic">Clues appear here...</p>
+            </div>
+          </div> */}
+
+         {/*  DYNAMIC CLUE BOX */}
+          <div className="lg:col-span-1">
+            <h2 className="text-xl font-['Orbitron'] font-bold text-white mb-2">Clue Box</h2>
+            
+            <div className="bg-white h-72 w-full border-4 border-white rounded-2xl shadow-xl flex flex-col items-center justify-center p-4 text-center overflow-hidden relative">
+               
+               {activeTask ? (
+                 <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500">
+                   
+                   {/*  THE PARENT'S SELECTED IMAGE */}
+                   {activeTask.taskImage ? (
+                     <img 
+                       src={activeTask.taskImage} 
+                       alt="Clue" 
+                       className="w-36 h-36 object-contain mb-3 drop-shadow-md" 
+                     />
+                   ) : (
+                     <div className="text-6xl mb-2">🖌️</div>
+                   )}
+                   
+                   {/* Task Info */}
+                   <h3 className="text-2xl font-bold text-[#2C2A4A] font-['Roboto_Slab'] uppercase tracking-wide">
+                     {activeTask.title}
+                   </h3>
+                   
+                   {activeTask.description && (
+                     <p className="text-xs text-gray-500 mt-1 max-w-[80%] leading-tight">
+                       {activeTask.description}
+                     </p>
+                   )}
+
+                   {/* Done Button */}
+                   <button 
+                      onClick={() => {handleCompleteTask(activeTask._id) ; handleSubmitDoodle;}}
+                      className="mt-3 bg-green-500 hover:bg-green-600 text-white px-6 py-1.5 rounded-full text-sm font-bold shadow-md transform active:scale-95 transition-all"
+                   >
+                     I Drew It! 
+                   </button>
+                   <audio
+            src={saveaudio}
+                       hidden
+           ref={audioRef}
+           preload="auto"
+          />
+                 </div>
+               ) : (
+                 // Empty State
+                 <div className="text-gray-400 italic">
+                    <p className="text-5xl mb-2 opacity-50">🌟</p>
+                    <p className="font-bold">No active tasks!</p>
+                    <p className="text-xs">Ask your parent for a challenge.</p>
+                 </div>
+               )}
+
             </div>
           </div>
 
@@ -631,11 +774,11 @@ useEffect(() => {
                         <td className="px-6 py-4">
                           {task.status === 'completed' ? (
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
-                              Done ✅
+                              Done 
                             </span>
                           ) : (
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
-                              Pending ⏳
+                              Pending 
                             </span>
                           )}
                         </td>
@@ -654,7 +797,7 @@ useEffect(() => {
                               <div>
                                 {task.appreciationMessage ? (
                                    <div className="text-sm text-purple-700 font-bold bg-purple-100 p-2 rounded-lg border border-purple-200 inline-block animate-pulse">
-                                      ✨ Msg: "{task.appreciationMessage}"
+                                       Msg: "{task.appreciationMessage}"
                                    </div>
                                 ) : (
                                    <span className="text-xs text-gray-400 italic">Waiting for parent...</span>

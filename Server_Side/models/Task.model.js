@@ -32,7 +32,8 @@ const taskSchema = new mongoose.Schema(
     dueDate: {
       type: Date,
     },
-  },
+    taskImage: { type: String }, 
+},
   { timestamps: true }
 );
 

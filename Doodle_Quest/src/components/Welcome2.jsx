@@ -248,14 +248,14 @@ const Welcome2 = () => {
           DoodleQuest
         </h1>
 
-        <div className="flex items-center gap-2">
+        {/* <div className="flex items-center gap-2">
           <img
             src="images/capboy.jpg"
             alt="Boy"
             className="w-8 h-8 rounded-full"
           />
           <ChevronDown className="w-4 h-4 mr-2 text-white" />
-        </div>
+        </div> */}
       </div>
 
       <div className="">

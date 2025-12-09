@@ -15,6 +15,9 @@ import taskRoutes from "./routes/task.routes.js";
 import doodleRoute from "./routes/doodleRoute.js";
 import modeRoutes from "./routes/modeRoute.js";
 import audioRoute from "./routes/audioroute.js";
+import parentalRoutes from "./routes/parentalRoute.js";
+import nounRoute from "./routes/nounRoute.js";
+
 dotenv.config();
 
 const app = express();
@@ -41,6 +44,8 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/mode", modeRoutes);
 app.use("/api",audioRoute);
+app.use("/api/parental", parentalRoutes);
+app.use("/api/noun", nounRoute);
 
 
 // ERROR HANDLER

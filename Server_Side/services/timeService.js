@@ -71,7 +71,9 @@ export const stopTimer = async (userId) => {
 
 export const getStatus = async (userId) => {
   let record = await ScreenTime.findOne({ userId });
-
+  if (!userId || userId === "undefined" || userId === "null") {
+     throw new Error("Invalid User ID");
+  }
   if (!record) {
     record = await ScreenTime.create({
       userId,
@@ -79,6 +81,11 @@ export const getStatus = async (userId) => {
       dailyLimit: 60,
       isActive: false
     });
+    const record = await ScreenTime.findOneAndUpdate(
+    { userId }, 
+    { $setOnInsert: { timeUsed: 0, dailyLimit: 60, isActive: false } },
+    { new: true, upsert: true } 
+  );
   }
 
   return record;
